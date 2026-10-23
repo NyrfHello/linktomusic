@@ -205,3 +205,39 @@ form.addEventListener("submit", async (e) => {
     processBtn.disabled = false;
   }
 });
+
+// Theme toggle with slide
+(function () {
+  const root = document.documentElement;
+  const container = document.querySelector('.theme-toggle');
+  const slider = container.querySelector('.theme-slider');
+  const buttons = container.querySelectorAll('button');
+  function apply(theme) {
+    root.setAttribute('data-theme', theme);
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+    const active = container.querySelector('button.active');
+    const i = Array.from(buttons).indexOf(active);
+    slider.style.transform = 'translateX(' + (i * 34) + 'px)';
+    localStorage.setItem('theme', theme);
+  }
+  const stored = localStorage.getItem('theme');
+  const initial = stored || 'dark';
+  apply(initial);
+  buttons.forEach(b => b.addEventListener('click', () => apply(b.dataset.theme)));
+})();
+
+// Segmented control slide
+(function () {
+  const group = document.querySelector('.segmented-control');
+  if (!group) return;
+  const slider = group.querySelector('.seg-slider');
+  function update() {
+    const checked = group.querySelector('input[name="format"]:checked');
+    const label = group.querySelector('label[for="' + checked.id + '"]');
+    slider.style.width = label.offsetWidth + 'px';
+    slider.style.transform = 'translateX(' + (label.offsetLeft - 4) + 'px)';
+  }
+  group.querySelectorAll('input[name="format"]').forEach(r => r.addEventListener('change', update));
+  window.addEventListener('load', update);
+  update();
+})();
