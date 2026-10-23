@@ -220,7 +220,7 @@ $shortTag   = substr(md5($jobId), 0, 5);
 $artistMeta = "LinkToMusic";
 $albumMeta  = "$title [$shortTag]";
 
-if ($primaryArt) {
+if ($primaryArt && $format !== "wav") {
     logTerm("Converting to .$format WITH embedded 1024x1024 cover art...");
     if ($format === 'flac') {
         $ffmpegCmd = sprintf(

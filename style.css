@@ -273,3 +273,10 @@ input::placeholder { color: var(--muted); opacity: 0.7; }
   transition: transform 0.25s ease, width 0.25s ease;
   z-index: 0;
 }
+
+.format-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+  font-style: italic;
+}
