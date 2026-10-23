@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkToMusic</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="ambient-bg"></div>
+
+  <main class="glass-container">
+    <header class="app-header">
+      <h1>LinkToMusic</h1>
+      <p>Convert links, attach custom artwork, and export high-res audio.</p>
+    </header>
+
+    <form id="music-form" class="form-grid">
+      <!-- 1. Input Link -->
+      <section class="field-group">
+        <label for="music-link">Input Link</label>
+        <input 
+          type="url" 
+          id="music-link" 
+          name="link"
+          placeholder="https://www.youtube.com/watch?v=... or SoundCloud URL" 
+          autocomplete="off"
+        />
+      </section>
+
+      <!-- 2. Cover & Album Image Grid -->
+      <div class="media-grid">
+        <!-- Cover Image -->
+        <section class="field-group">
+          <label for="cover-url">Input Cover Image</label>
+          <input 
+            type="url" 
+            id="cover-url" 
+            name="cover_url"
+            placeholder="Paste image link (or Ctrl+V image)..." 
+            autocomplete="off"
+          />
+          <div class="drop-zone" id="cover-drop">
+            <input type="file" id="cover-file" name="cover_file" accept="image/*" hidden />
+            <span class="drop-hint">or drag it here / <strong>browse</strong></span>
+            <img class="preview-img" id="cover-preview" alt="Cover preview" width="140" hidden />
+          </div>
+        </section>
+
+        <!-- Album Image -->
+        <section class="field-group">
+          <label for="album-url">Input Album Image</label>
+          <input 
+            type="url" 
+            id="album-url" 
+            name="album_url"
+            placeholder="Paste image link (or Ctrl+V image)..." 
+            autocomplete="off"
+          />
+          <div class="drop-zone" id="album-drop">
+            <input type="file" id="album-file" name="album_file" accept="image/*" hidden />
+            <span class="drop-hint">or drag it here / <strong>browse</strong></span>
+            <img class="preview-img" id="album-preview" alt="Album preview" width="140" hidden />
+          </div>
+        </section>
+      </div>
+
+      <!-- 3. Select Audio Format / File -->
+      <section class="field-group">
+        <label>Select Audio Format (WAV / FLAC / M4A)</label>
+        <div class="segmented-control" role="radiogroup">
+          <input type="radio" name="format" id="fmt-wav" value="wav" checked />
+          <label for="fmt-wav">WAV</label>
+
+          <input type="radio" name="format" id="fmt-flac" value="flac" />
+          <label for="fmt-flac">FLAC</label>
+
+          <input type="radio" name="format" id="fmt-m4a" value="m4a" />
+          <label for="fmt-m4a">M4A</label>
+        </div>
+
+        <div class="audio-upload-bar">
+          <label for="audio-file" class="secondary-btn">
+            Or upload local audio (.wav / .flac / .m4a)
+          </label>
+          <input type="file" id="audio-file" name="audio_file" accept=".wav,.flac,.m4a,audio/*" hidden />
+          <span id="audio-filename" class="filename-display">No file selected</span>
+        </div>
+      </section>
+
+      <!-- Submit Button -->
+      <button type="submit" id="process-btn" class="primary-btn">
+        Convert & Download
+      </button>
+    </form>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
