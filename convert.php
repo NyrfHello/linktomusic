@@ -88,6 +88,21 @@ if (!empty($_FILES['audio_file']['tmp_name']) && $_FILES['audio_file']['error'] 
     sendError('Provide an input link or select a local audio file.');
 }
 
+// Normalize source audio to WAV to avoid broken timestamps/timescale issues
+$normPath = "$jobDir/source_norm.wav";
+$normCmd = sprintf(
+    'ffmpeg -y -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err -i %s -vn -c:a pcm_s16le %s 2>&1',
+    escapeshellarg($rawAudioPath),
+    escapeshellarg($normPath)
+);
+exec($normCmd, $normOut, $normRet);
+if ($normRet === 0 && file_exists($normPath) && filesize($normPath) > 0) {
+    $rawAudioPath = $normPath;
+    logTerm("Normalized source audio to WAV: $rawAudioPath");
+} else {
+    logTerm("Normalization failed, continuing with original source: " . implode(" | ", array_slice($normOut, -3)));
+}
+
 // 2. Download/Save & Auto-Resize Image to 1024x1024
 function fetchUrlBytes($url) {
     $parsed  = parse_url($url);
@@ -179,7 +194,7 @@ function prepareArtwork($jobDir, $name, $fileKey, $url) {
 
     // Convert to clean 24-bit RGB PNG
     $normCmd = sprintf(
-        'ffmpeg -y -i %s -vf "%s,format=rgb24" -frames:v 1 -c:v png %s 2>&1',
+        'ffmpeg -y -fflags +genpts -i %s -vf "%s,format=rgb24" -frames:v 1 -c:v png %s 2>&1',
         escapeshellarg($rawPath),
         $scaleFilter,
         escapeshellarg($cleanPath)
@@ -224,7 +239,7 @@ if ($primaryArt && $format !== "wav") {
     logTerm("Converting to .$format WITH embedded 1024x1024 cover art...");
     if ($format === 'flac') {
         $ffmpegCmd = sprintf(
-            'ffmpeg -y -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a flac -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s %s 2>&1',
+            'ffmpeg -y -fflags +genpts -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a flac -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s %s 2>&1',
             escapeshellarg($rawAudioPath),
             escapeshellarg($primaryArt),
             escapeshellarg($title),
@@ -234,7 +249,7 @@ if ($primaryArt && $format !== "wav") {
         );
     } elseif ($format === 'm4a') {
         $ffmpegCmd = sprintf(
-            'ffmpeg -y -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a aac -b:a 256k -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -movflags +faststart %s 2>&1',
+            'ffmpeg -y -fflags +genpts -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a aac -b:a 256k -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -movflags +faststart %s 2>&1',
             escapeshellarg($rawAudioPath),
             escapeshellarg($primaryArt),
             escapeshellarg($title),
@@ -244,7 +259,7 @@ if ($primaryArt && $format !== "wav") {
         );
     } else {
         $ffmpegCmd = sprintf(
-            'ffmpeg -y -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a pcm_s16le -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -id3v2_version 3 -write_id3v2 1 %s 2>&1',
+            'ffmpeg -y -fflags +genpts -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a pcm_s16le -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -id3v2_version 3 -write_id3v2 1 %s 2>&1',
             escapeshellarg($rawAudioPath),
             escapeshellarg($primaryArt),
             escapeshellarg($title),
@@ -263,7 +278,7 @@ if ($primaryArt && $format !== "wav") {
         $audioCodec = '-vn -c:a aac -b:a 256k -movflags +faststart';
     }
     $ffmpegCmd = sprintf(
-        'ffmpeg -y -i %s -map_metadata -1 %s -metadata title=%s %s 2>&1',
+        'ffmpeg -y -fflags +genpts -i %s -map_metadata -1 %s -metadata title=%s %s 2>&1',
         escapeshellarg($rawAudioPath),
         $audioCodec,
         escapeshellarg($title),
