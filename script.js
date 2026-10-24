@@ -37,14 +37,12 @@ function setupImageZone(dropZoneId, fileInputId, urlInputId, previewId) {
     e.preventDefault();
     dropZone.classList.remove("dragover");
 
-    // Case A: Dropped a file from file manager
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith("image/")) {
       assignFile(file);
       return;
     }
 
-    // Case B: Dragged an image directly from another browser tab
     const droppedUrl = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
     if (droppedUrl && droppedUrl.startsWith("http")) {
       fileInput.value = "";
@@ -53,7 +51,6 @@ function setupImageZone(dropZoneId, fileInputId, urlInputId, previewId) {
     }
   });
 
-  // Allow Ctrl+V pasting a copied image directly into the URL input box
   urlInput.addEventListener("paste", (e) => {
     if (e.clipboardData && e.clipboardData.files.length > 0) {
       const file = e.clipboardData.files[0];
@@ -96,7 +93,6 @@ audioInput.addEventListener("change", () => {
     : "No file selected";
 });
 
-// Helper: Try fetching image URL in browser first (shares browser session/cache if CORS permits)
 async function tryFetchImageInBrowser(url, filename) {
   if (!url) return null;
   try {
@@ -107,13 +103,11 @@ async function tryFetchImageInBrowser(url, filename) {
         return new File([blob], filename, { type: blob.type });
       }
     }
-  } catch (_) {
-    // CORS restricted; convert.php will download it server-side
-  }
+  } catch (_) {}
   return null;
 }
 
-// 3. Send data to convert.php and download the converted audio file
+// 3. Send data to convert.php
 const form = document.getElementById("music-form");
 const processBtn = document.getElementById("process-btn");
 
@@ -121,6 +115,8 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const link = document.getElementById("music-link").value.trim();
+  const songTitle = document.getElementById("song-title").value.trim();
+  const artistName = document.getElementById("artist-name").value.trim();
   const coverUrl = document.getElementById("cover-url").value.trim();
   const albumUrl = document.getElementById("album-url").value.trim();
   let coverFile = document.getElementById("cover-file").files[0];
@@ -138,7 +134,6 @@ form.addEventListener("submit", async (e) => {
   processBtn.textContent = `Converting to .${format.toUpperCase()}...`;
 
   try {
-    // If only URL was given, try grabbing the image blob in the browser first
     if (!coverFile && coverUrl) {
       coverFile = await tryFetchImageInBrowser(coverUrl, "cover_browser_img");
     }
@@ -148,6 +143,8 @@ form.addEventListener("submit", async (e) => {
 
     const formData = new FormData();
     formData.append("link", link);
+    formData.append("song_title", songTitle);
+    formData.append("artist_name", artistName);
     formData.append("audio_format", format);
     formData.append("cover_url", coverUrl);
     formData.append("album_url", albumUrl);
@@ -205,39 +202,3 @@ form.addEventListener("submit", async (e) => {
     processBtn.disabled = false;
   }
 });
-
-// Theme toggle with slide
-(function () {
-  const root = document.documentElement;
-  const container = document.querySelector('.theme-toggle');
-  const slider = container.querySelector('.theme-slider');
-  const buttons = container.querySelectorAll('button');
-  function apply(theme) {
-    root.setAttribute('data-theme', theme);
-    buttons.forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
-    const active = container.querySelector('button.active');
-    const i = Array.from(buttons).indexOf(active);
-    slider.style.transform = 'translateX(' + (i * 34) + 'px)';
-    localStorage.setItem('theme', theme);
-  }
-  const stored = localStorage.getItem('theme');
-  const initial = stored || 'dark';
-  apply(initial);
-  buttons.forEach(b => b.addEventListener('click', () => apply(b.dataset.theme)));
-})();
-
-// Segmented control slide
-(function () {
-  const group = document.querySelector('.segmented-control');
-  if (!group) return;
-  const slider = group.querySelector('.seg-slider');
-  function update() {
-    const checked = group.querySelector('input[name="format"]:checked');
-    const label = group.querySelector('label[for="' + checked.id + '"]');
-    slider.style.width = label.offsetWidth + 'px';
-    slider.style.transform = 'translateX(' + (label.offsetLeft - 4) + 'px)';
-  }
-  group.querySelectorAll('input[name="format"]').forEach(r => r.addEventListener('change', update));
-  window.addEventListener('load', update);
-  update();
-})();
