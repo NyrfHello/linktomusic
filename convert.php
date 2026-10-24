@@ -30,10 +30,12 @@ function cleanupDir($dir) {
     @rmdir($dir);
 }
 
-$link     = trim($_POST['link'] ?? '');
-$format   = $_POST['audio_format'] ?? 'flac';
-$coverUrl = trim($_POST['cover_url'] ?? '');
-$albumUrl = trim($_POST['album_url'] ?? '');
+$link       = trim($_POST['link'] ?? '');
+$customSong = trim($_POST['song_title'] ?? '');
+$customArt  = trim($_POST['artist_name'] ?? '');
+$format     = $_POST['audio_format'] ?? 'flac';
+$coverUrl   = trim($_POST['cover_url'] ?? '');
+$albumUrl   = trim($_POST['album_url'] ?? '');
 
 if (!in_array($format, ['wav', 'flac', 'm4a'], true)) {
     sendError('Unsupported audio format.');
@@ -46,12 +48,12 @@ if (!mkdir($jobDir, 0777, true)) {
 }
 
 $rawAudioPath = '';
-$title = 'converted_track';
+$detectedTitle = 'downloaded_audio';
 
 // 1. Get Source Audio (Uploaded File OR Link via single-pass yt-dlp)
 if (!empty($_FILES['audio_file']['tmp_name']) && $_FILES['audio_file']['error'] === UPLOAD_ERR_OK) {
     $origName = $_FILES['audio_file']['name'];
-    $title = pathinfo($origName, PATHINFO_FILENAME);
+    $detectedTitle = pathinfo($origName, PATHINFO_FILENAME);
     $ext   = pathinfo($origName, PATHINFO_EXTENSION);
     $rawAudioPath = "$jobDir/source.$ext";
     move_uploaded_file($_FILES['audio_file']['tmp_name'], $rawAudioPath);
@@ -71,8 +73,8 @@ if (!empty($_FILES['audio_file']['tmp_name']) && $_FILES['audio_file']['error'] 
 
     if (file_exists($titleFile)) {
         $fetchedTitle = trim(file_get_contents($titleFile));
-        $title = preg_replace('/[^\w\s\-\.\(\)\[\]]/u', '', $fetchedTitle);
-        $title = trim($title) ?: 'downloaded_audio';
+        $cleaned = preg_replace('/[^\w\s\-\.\(\)\[\]]/u', '', $fetchedTitle);
+        $detectedTitle = trim($cleaned) ?: 'downloaded_audio';
         @unlink($titleFile);
     }
 
@@ -82,28 +84,18 @@ if (!empty($_FILES['audio_file']['tmp_name']) && $_FILES['audio_file']['error'] 
         sendError("Failed to download link: " . implode(" | ", array_slice($dlOutput, -3)), 500);
     }
     $rawAudioPath = $matches[0];
-    logTerm("Downloaded audio: $rawAudioPath (Title: $title)");
+    logTerm("Downloaded audio: $rawAudioPath (Detected Title: $detectedTitle)");
 } else {
     cleanupDir($jobDir);
     sendError('Provide an input link or select a local audio file.');
 }
 
-// Normalize source audio to WAV to avoid broken timestamps/timescale issues
-$normPath = "$jobDir/source_norm.wav";
-$normCmd = sprintf(
-    'ffmpeg -y -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err -i %s -vn -c:a pcm_s16le %s 2>&1',
-    escapeshellarg($rawAudioPath),
-    escapeshellarg($normPath)
-);
-exec($normCmd, $normOut, $normRet);
-if ($normRet === 0 && file_exists($normPath) && filesize($normPath) > 0) {
-    $rawAudioPath = $normPath;
-    logTerm("Normalized source audio to WAV: $rawAudioPath");
-} else {
-    logTerm("Normalization failed, continuing with original source: " . implode(" | ", array_slice($normOut, -3)));
-}
+// Final metadata decisions (Prioritize user text inputs)
+$titleFinal  = ($customSong !== '') ? $customSong : $detectedTitle;
+$artistFinal = ($customArt !== '') ? $customArt : 'LinkToMusic';
+$albumFinal  = $titleFinal; // Clean album tag matching the song title
 
-// 2. Download/Save & Auto-Resize Image to 1024x1024
+// 2. Download/Save & Auto-Resize Image to 1024x1024 minimum
 function fetchUrlBytes($url) {
     $parsed  = parse_url($url);
     $referer = isset($parsed['scheme'], $parsed['host'])
@@ -152,7 +144,6 @@ function prepareArtwork($jobDir, $name, $fileKey, $url) {
         if ($data !== false) {
             file_put_contents($rawPath, $data);
 
-            // If user pasted a webpage URL instead of a direct image, extract og:image
             if (@getimagesize($rawPath) === false) {
                 $html = file_get_contents($rawPath);
                 if (preg_match('/<meta[^>]+(?:property|name)=["\'](?:og:image|twitter:image)["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $m) ||
@@ -183,7 +174,6 @@ function prepareArtwork($jobDir, $name, $fileKey, $url) {
     $width  = $imgInfo[0];
     $height = $imgInfo[1];
 
-    // Auto-resize any image smaller than 1024x1024 up to 1024x1024
     if ($width < 1024 || $height < 1024) {
         logTerm("Image is too small ({$width}x{$height}). Auto-resizing to 1024x1024...");
         $scaleFilter = "scale=1024:1024:flags=lanczos";
@@ -192,9 +182,8 @@ function prepareArtwork($jobDir, $name, $fileKey, $url) {
         $scaleFilter = "scale='min(1200,iw)':'min(1200,ih)':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2";
     }
 
-    // Convert to clean 24-bit RGB PNG
     $normCmd = sprintf(
-        'ffmpeg -y -fflags +genpts -i %s -vf "%s,format=rgb24" -frames:v 1 -c:v png %s 2>&1',
+        'ffmpeg -y -i %s -vf "%s,format=rgb24" -frames:v 1 -c:v png %s 2>&1',
         escapeshellarg($rawPath),
         $scaleFilter,
         escapeshellarg($cleanPath)
@@ -226,50 +215,47 @@ if (!$albumRes['ok']) {
 
 $primaryArt = $coverRes['path'] ?: $albumRes['path'];
 
-// 3. Convert to WAV / FLAC / M4A & Embed Artwork via FFmpeg
-$outputFilename = "$title.$format";
-$outputPath     = "$jobDir/$outputFilename";
+// 3. Convert to WAV / FLAC / M4A & Embed Custom Metadata
+$safeTitleFilename = preg_replace('/[^\w\s\-\.\(\)\[\]]/u', '', $titleFinal);
+$safeTitleFilename = trim($safeTitleFilename) ?: 'audio';
+$outputFilename    = "$safeTitleFilename.$format";
+$outputPath        = "$jobDir/$outputFilename";
 
-// Unique artist + album tags prevent VLC from reusing old cached .m4a cover art
-$shortTag   = substr(md5($jobId), 0, 5);
-$artistMeta = "LinkToMusic";
-$albumMeta  = "$title [$shortTag]";
-
-if ($primaryArt && $format !== "wav") {
-    logTerm("Converting to .$format WITH embedded 1024x1024 cover art...");
+if ($primaryArt) {
+    logTerm("Converting to .$format WITH custom metadata & cover art...");
     if ($format === 'flac') {
         $ffmpegCmd = sprintf(
-            'ffmpeg -y -fflags +genpts -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a flac -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s %s 2>&1',
+            'ffmpeg -y -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a flac -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s %s 2>&1',
             escapeshellarg($rawAudioPath),
             escapeshellarg($primaryArt),
-            escapeshellarg($title),
-            escapeshellarg($artistMeta),
-            escapeshellarg($albumMeta),
+            escapeshellarg($titleFinal),
+            escapeshellarg($artistFinal),
+            escapeshellarg($albumFinal),
             escapeshellarg($outputPath)
         );
     } elseif ($format === 'm4a') {
         $ffmpegCmd = sprintf(
-            'ffmpeg -y -fflags +genpts -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a aac -b:a 256k -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -movflags +faststart %s 2>&1',
+            'ffmpeg -y -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a aac -b:a 256k -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -movflags +faststart %s 2>&1',
             escapeshellarg($rawAudioPath),
             escapeshellarg($primaryArt),
-            escapeshellarg($title),
-            escapeshellarg($artistMeta),
-            escapeshellarg($albumMeta),
+            escapeshellarg($titleFinal),
+            escapeshellarg($artistFinal),
+            escapeshellarg($albumFinal),
             escapeshellarg($outputPath)
         );
     } else {
         $ffmpegCmd = sprintf(
-            'ffmpeg -y -fflags +genpts -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a pcm_s16le -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -id3v2_version 3 -write_id3v2 1 %s 2>&1',
+            'ffmpeg -y -i %s -i %s -map_metadata -1 -map 0:a:0 -map 1:v:0 -c:a pcm_s16le -c:v copy -disposition:v:0 attached_pic -metadata:s:v:0 title="Album cover" -metadata:s:v:0 comment="Cover (front)" -metadata title=%s -metadata artist=%s -metadata album=%s -id3v2_version 3 -write_id3v2 1 %s 2>&1',
             escapeshellarg($rawAudioPath),
             escapeshellarg($primaryArt),
-            escapeshellarg($title),
-            escapeshellarg($artistMeta),
-            escapeshellarg($albumMeta),
+            escapeshellarg($titleFinal),
+            escapeshellarg($artistFinal),
+            escapeshellarg($albumFinal),
             escapeshellarg($outputPath)
         );
     }
 } else {
-    logTerm("Converting to .$format (audio only, no artwork provided)...");
+    logTerm("Converting to .$format (audio + metadata only)...");
     if ($format === 'wav') {
         $audioCodec = '-vn -c:a pcm_s16le';
     } elseif ($format === 'flac') {
@@ -278,10 +264,12 @@ if ($primaryArt && $format !== "wav") {
         $audioCodec = '-vn -c:a aac -b:a 256k -movflags +faststart';
     }
     $ffmpegCmd = sprintf(
-        'ffmpeg -y -fflags +genpts -i %s -map_metadata -1 %s -metadata title=%s %s 2>&1',
+        'ffmpeg -y -i %s -map_metadata -1 %s -metadata title=%s -metadata artist=%s -metadata album=%s %s 2>&1',
         escapeshellarg($rawAudioPath),
         $audioCodec,
-        escapeshellarg($title),
+        escapeshellarg($titleFinal),
+        escapeshellarg($artistFinal),
+        escapeshellarg($albumFinal),
         escapeshellarg($outputPath)
     );
 }
@@ -293,7 +281,7 @@ if ($ffReturn !== 0 || !file_exists($outputPath)) {
     sendError("FFmpeg error: " . implode("\n", array_slice($ffOutput, -5)), 500);
 }
 
-// Automatically clear local VLC art cache on Linux so stale .m4a covers never stick
+// Automatically clear local VLC art cache on Linux
 $homeDir = getenv('HOME') ?: (posix_getpwuid(posix_geteuid())['dir'] ?? '');
 if ($homeDir && is_dir("$homeDir/.cache/vlc/art")) {
     cleanupDir("$homeDir/.cache/vlc/art");
@@ -302,7 +290,7 @@ if ($homeDir && is_dir("$homeDir/.cache/vlc/art")) {
 
 logTerm("Success! Streaming $outputFilename to browser.");
 
-// 4. Send File to User's Browser & Clean Up Server
+// 4. Send File to Browser
 $safeAscii = preg_replace('/[^\x20-\x7E]/', '_', $outputFilename);
 $utf8Name  = rawurlencode($outputFilename);
 
