@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,6 +11,11 @@
 
   <main class="glass-container">
     <header class="app-header">
+      <div class="theme-toggle" role="group" aria-label="Theme">
+        <span class="theme-slider"></span>
+        <button type="button" data-theme="dark" aria-label="Dark mode"></button>
+        <button type="button" data-theme="light" aria-label="Light mode"></button>
+      </div>
       <h1>LinkToMusic</h1>
       <p>Convert links, attach custom artwork, and export high-res audio.</p>
     </header>
@@ -69,6 +74,7 @@
       <section class="field-group">
         <label>Select Audio Format (WAV / FLAC / M4A)</label>
         <div class="segmented-control" role="radiogroup">
+          <span class="seg-slider"></span>
           <input type="radio" name="format" id="fmt-wav" value="wav" checked />
           <label for="fmt-wav">WAV</label>
 
@@ -79,12 +85,21 @@
           <label for="fmt-m4a">M4A</label>
         </div>
 
+        <p class="format-note">Note: cover art can only be embedded in FLAC and M4A formats. WAV will be audio-only.</p>
+
+      <div class="audio-upload-bar">
+        <label for="audio-file" class="secondary-btn">Or upload local audio (.wav / .flac / .m4a)</label>
+        <input type="file" id="audio-file" name="audio_file" accept=".wav,.flac,.m4a,audio/*" hidden />
+        <span id="audio-filename" class="filename-display">No file selected</span>
+      </div>
       <!-- Submit Button -->
       <button type="submit" id="process-btn" class="primary-btn">
         Convert & Download
       </button>
     </form>
   </main>
+
+  <footer class="app-footer">linktomusic · © 2026 NyrfHello</footer>
 
   <script src="script.js"></script>
 </body>
